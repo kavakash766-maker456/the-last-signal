@@ -123,6 +123,13 @@ export class ClinicScene {
     this.root.add(this.gateDoor);
     this.walls.push(new THREE.Box3().setFromObject(this.gateDoor));
 
+    // Porch Lantern Light over Gate (Eerie amber glow illuminating courtyard)
+    const porchLight = new THREE.PointLight(0xffb74d, 2.5, 18, 1.6);
+    porchLight.position.set(0, 3.4, 10.5);
+    porchLight.castShadow = true;
+    this.root.add(porchLight);
+    this.atmosphere.registerFlickeringLight(porchLight);
+
     this.interactables.push({
       id: 'clinic_gate',
       type: 'GATE',

@@ -46,14 +46,19 @@ export class Atmosphere {
     this.scene = scene;
     this.camera = camera;
 
-    // Atmospheric dark blue-green distance fog
-    this.fog = new THREE.FogExp2(0x04080d, 0.045);
+    // Atmospheric dark blue distance fog (tuned so surroundings and clinic are visible)
+    this.fog = new THREE.FogExp2(0x060e18, 0.028);
     this.scene.fog = this.fog;
-    this.scene.background = new THREE.Color(0x04080d);
+    this.scene.background = new THREE.Color(0x060e18);
 
     // Ambient moonlight / ominous baseline
-    const ambient = new THREE.AmbientLight(0x0a1622, 0.85);
+    const ambient = new THREE.AmbientLight(0x182c40, 1.2);
     this.scene.add(ambient);
+
+    // Directional moonlight breaking through storm clouds
+    const moon = new THREE.DirectionalLight(0x4a7298, 1.0);
+    moon.position.set(12, 28, 18);
+    this.scene.add(moon);
 
     // Lightning light
     this.lightningLight = new THREE.DirectionalLight(0xbdd8ff, 0);
@@ -61,7 +66,7 @@ export class Atmosphere {
     this.scene.add(this.lightningLight);
 
     // --- VOLUMETRIC FLASHLIGHT ---
-    this.flashlight = new THREE.SpotLight(0xfff5dd, 4.5, 24, Math.PI / 7, 0.45, 1.4);
+    this.flashlight = new THREE.SpotLight(0xfffaea, 5.5, 30, Math.PI / 6, 0.4, 1.2);
     this.flashlight.position.set(0.2, -0.15, 0.1);
     this.flashlight.castShadow = true;
     this.flashlight.shadow.mapSize.width = 1024;

@@ -84,6 +84,14 @@ export class UIManager {
     this.vignetteOverlay = document.getElementById('vignette-overlay')!;
     this.heartbeatOverlay = document.getElementById('heartbeat-overlay')!;
 
+    // Initial state: Show ONLY main menu, hide all HUD & modals
+    this.showScreen('menu');
+    this.modalJoin.classList.add('hidden');
+    this.modalSettings.classList.add('hidden');
+    this.modalPuzzle.classList.add('hidden');
+    this.climaxBanner.classList.add('hidden');
+    this.subtitleBox.classList.add('hidden');
+
     this.initEventListeners();
   }
 
@@ -229,10 +237,19 @@ export class UIManager {
     this.hudRoot.classList.add('hidden');
     this.screenGameover.classList.add('hidden');
     this.screenVictory.classList.add('hidden');
+    document.getElementById('mobile-controls')?.classList.add('hidden');
 
     if (screen === 'menu') this.screenMenu.classList.remove('hidden');
     if (screen === 'lobby') this.screenLobby.classList.remove('hidden');
-    if (screen === 'game') this.hudRoot.classList.remove('hidden');
+    if (screen === 'game') {
+      this.hudRoot.classList.remove('hidden');
+      const isMobile = ('ontouchstart' in window) || navigator.maxTouchPoints > 0;
+      if (isMobile) {
+        document.getElementById('mobile-controls')?.classList.remove('hidden');
+      } else {
+        document.getElementById('canvas-container')?.requestPointerLock?.();
+      }
+    }
     if (screen === 'defeat') this.screenGameover.classList.remove('hidden');
     if (screen === 'victory') this.screenVictory.classList.remove('hidden');
   }

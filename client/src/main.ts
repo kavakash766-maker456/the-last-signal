@@ -71,6 +71,9 @@ class GameApp {
     this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
     this.renderer.toneMappingExposure = 1.05;
     container.appendChild(this.renderer.domElement);
+
+    // CRITICAL: Camera must be added to the scene so its attached children (flashlight, light cones) illuminate the scene!
+    this.scene.add(this.camera);
   }
 
   private initSystems() {
