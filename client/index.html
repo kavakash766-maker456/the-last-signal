@@ -1,0 +1,337 @@
+<!DOCTYPE html>
+<html lang="si">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
+  <meta name="theme-color" content="#030708" />
+  <title>අවසන් සංඥාව | THE LAST SIGNAL - Co-op 3D Horror</title>
+  
+  <!-- Fonts: Noto Sans Sinhala & Cinzel Decorative -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Cinzel+Decorative:wght@700;900&family=Noto+Sans+Sinhala:wght@400;600;700;900&family=Share+Tech+Mono&display=swap" rel="stylesheet">
+  
+  <link rel="stylesheet" href="/src/styles/main.css" />
+</head>
+<body class="horror-theme">
+  <!-- Three.js Canvas Container -->
+  <div id="canvas-container"></div>
+
+  <!-- Horror Atmosphere Overlays -->
+  <div id="vignette-overlay" class="vignette"></div>
+  <div id="heartbeat-overlay" class="heartbeat-pulse"></div>
+  <div id="static-overlay" class="tv-static"></div>
+  <div id="blood-overlay" class="blood-screen"></div>
+
+  <!-- UI Root Container -->
+  <div id="ui-root">
+    
+    <!-- MAIN MENU -->
+    <div id="screen-menu" class="screen active">
+      <div class="menu-backdrop"></div>
+      <div class="menu-content">
+        <div class="title-container">
+          <div class="blood-drip"></div>
+          <h1 class="game-title">අවසන් සංඥාව</h1>
+          <h2 class="game-subtitle">THE LAST SIGNAL</h2>
+          <div class="chapter-tag">පරිච්ඡේදය 1: අඳුරු සායනය (The Abandoned Clinic)</div>
+        </div>
+
+        <div class="server-status-card" id="server-status-badge">
+          <span class="status-dot pinging"></span>
+          <span class="status-text" id="status-text">සේවාදායකය පරීක්ෂා කරමින්... (Checking Server)</span>
+        </div>
+
+        <div class="player-profile-box">
+          <label for="player-name-input">ඔබේ නම (Player Name):</label>
+          <input type="text" id="player-name-input" maxlength="15" value="ක්‍රීඩකයා 1" />
+        </div>
+
+        <div class="menu-actions">
+          <button id="btn-solo" class="btn btn-primary">
+            <span class="btn-icon">⚡</span>
+            <span class="btn-text">තනිව ක්‍රීඩා කරන්න (Solo Story)</span>
+          </button>
+          <button id="btn-create-room" class="btn btn-danger">
+            <span class="btn-icon">💀</span>
+            <span class="btn-text">නව කාමරයක් සාදන්න (Create 4P Room)</span>
+          </button>
+          <button id="btn-join-dialog" class="btn btn-secondary">
+            <span class="btn-icon">🔑</span>
+            <span class="btn-text">කාමරයකට එක්වන්න (Join with Code)</span>
+          </button>
+          <button id="btn-open-settings" class="btn btn-outline">
+            <span class="btn-icon">⚙️</span>
+            <span class="btn-text">සැකසුම් සහ පාලක (Settings & Controls)</span>
+          </button>
+        </div>
+
+        <div class="menu-footer">
+          <span>WebGL 2.0 • Web Audio 3D • WebSockets • Sri Lanka Horror Story</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- JOIN ROOM MODAL -->
+    <div id="modal-join" class="modal-overlay hidden">
+      <div class="modal-card">
+        <h3 class="modal-title">කාමරයට එක්වන්න (Join Room)</h3>
+        <p class="modal-desc">අක්ෂර 5කින් යුත් කාමර කේතය ඇතුළත් කරන්න (Enter 5-character code):</p>
+        <div class="code-input-wrap">
+          <input type="text" id="join-code-input" maxlength="5" placeholder="H9KZ2" autocomplete="off" autocorrect="off" autocapitalize="characters" />
+        </div>
+        <div id="join-error-msg" class="error-msg hidden"></div>
+        <div class="modal-buttons">
+          <button id="btn-join-confirm" class="btn btn-danger">එක්වන්න (Join)</button>
+          <button id="btn-join-cancel" class="btn btn-outline">අවලංගුයි (Cancel)</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- LOBBY SCREEN -->
+    <div id="screen-lobby" class="screen hidden">
+      <div class="lobby-panel">
+        <div class="lobby-header">
+          <div class="room-code-tag">
+            <span>කාමර කේතය (ROOM CODE):</span>
+            <strong id="lobby-room-code">------</strong>
+            <button id="btn-copy-code" class="btn-icon-small" title="Copy Code">📋 පිටපත්</button>
+          </div>
+          <div class="room-capacity" id="lobby-capacity-tag">1 / 4 ක්‍රීඩකයින්</div>
+        </div>
+
+        <div class="lobby-slots" id="lobby-player-list">
+          <!-- Dynamically populated player cards -->
+        </div>
+
+        <div class="lobby-info-box">
+          <p class="warning-text">⚠️ <strong>අවවාදයයි:</strong> සායනයේ සැඟවී සිටින ජීවියා (The Entity) ශබ්දයට සහ ආලෝකයට ඉතා සංවේදීය. කණ්ඩායමක් ලෙස සහයෝගයෙන් කටයුතු කරන්න.</p>
+        </div>
+
+        <div class="lobby-controls">
+          <button id="btn-toggle-ready" class="btn btn-secondary">සූදානම් වන්න (Ready)</button>
+          <button id="btn-start-game" class="btn btn-danger hidden">ක්‍රීඩාව ආරම්භ කරන්න (Start Game)</button>
+          <button id="btn-leave-lobby" class="btn btn-outline">කාමරයෙන් ඉවත් වන්න (Leave)</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- IN-GAME HUD -->
+    <div id="hud-root" class="hud-container hidden">
+      <!-- Crosshair -->
+      <div id="hud-crosshair" class="crosshair">
+        <div class="reticle-dot"></div>
+      </div>
+
+      <!-- Interaction Prompt -->
+      <div id="interaction-prompt" class="interaction-prompt hidden">
+        <span class="prompt-key" id="prompt-key-label">[E]</span>
+        <span class="prompt-text" id="prompt-text-label">යතුර ලබාගන්න (Pick up key)</span>
+      </div>
+
+      <!-- Top Objective Bar -->
+      <div id="objective-banner" class="objective-banner">
+        <div class="objective-header">
+          <span class="objective-icon">📜</span>
+          <span class="objective-title-tag">වත්මන් මෙහෙයුම (CURRENT OBJECTIVE)</span>
+        </div>
+        <div class="objective-content" id="objective-current-text">
+          සායනයේ ප්‍රධාන ගේට්ටුවේ යතුර සොයාගන්න
+        </div>
+        <div class="objective-sub-desc" id="objective-sub-text">
+          ලොබියේ මේසය හෝ පිළිගැනීමේ කවුන්ටරය පරීක්ෂා කරන්න.
+        </div>
+      </div>
+
+      <!-- Top Climax Timer (for rooftop escape) -->
+      <div id="climax-timer-banner" class="climax-banner hidden">
+        <div class="climax-pulse-icon">🚨</div>
+        <div class="climax-timer-wrap">
+          <span class="climax-label">ගලවාගැනීමේ හෙලිකොප්ටරය පැමිණීමට (Rescue Arrival):</span>
+          <span id="climax-countdown" class="climax-digits">01:30</span>
+        </div>
+      </div>
+
+      <!-- Bottom Left Status: Battery & Stamina -->
+      <div class="player-vitals">
+        <!-- Flashlight Battery -->
+        <div class="vital-item">
+          <span class="vital-icon" id="battery-icon">🔦</span>
+          <div class="bar-container">
+            <div id="battery-bar" class="bar battery-fill" style="width: 100%;"></div>
+          </div>
+          <span id="battery-label" class="vital-val">100%</span>
+        </div>
+        <!-- Stamina -->
+        <div class="vital-item">
+          <span class="vital-icon">⚡</span>
+          <div class="bar-container">
+            <div id="stamina-bar" class="bar stamina-fill" style="width: 100%;"></div>
+          </div>
+          <span id="stamina-label" class="vital-val">100%</span>
+        </div>
+      </div>
+
+      <!-- Subtitle Box -->
+      <div id="subtitle-box" class="subtitle-wrap hidden">
+        <div class="subtitle-speaker" id="subtitle-speaker">ගුවන්විදුලි පණිවිඩය (Radio)</div>
+        <div class="subtitle-text" id="subtitle-content">...සංඥාව අහන්න... කවුරුහරි ඉන්නවද...</div>
+      </div>
+
+      <!-- Co-op Player Indicators (compass/HUD) -->
+      <div id="teammate-hud-list" class="teammate-indicators"></div>
+
+      <!-- Puzzle Code Safe Modal (for symbol lock 739) -->
+      <div id="puzzle-modal" class="puzzle-modal hidden">
+        <div class="puzzle-frame">
+          <h3 class="puzzle-title">වෛද්‍යවරයාගේ රහස් සේප්පුව (Doctor's Safe)</h3>
+          <p class="puzzle-hint">කාමරයේ බිත්තියේ ලියා ඇති අංක 3 කේතය ඇතුළත් කරන්න:</p>
+          <div class="keypad-display">
+            <span id="keypad-digit-1">-</span>
+            <span id="keypad-digit-2">-</span>
+            <span id="keypad-digit-3">-</span>
+          </div>
+          <div class="keypad-grid">
+            <button class="keypad-btn" data-key="1">1</button>
+            <button class="keypad-btn" data-key="2">2</button>
+            <button class="keypad-btn" data-key="3">3</button>
+            <button class="keypad-btn" data-key="4">4</button>
+            <button class="keypad-btn" data-key="5">5</button>
+            <button class="keypad-btn" data-key="6">6</button>
+            <button class="keypad-btn" data-key="7">7</button>
+            <button class="keypad-btn" data-key="8">8</button>
+            <button class="keypad-btn" data-key="9">9</button>
+            <button class="keypad-btn btn-clear" data-key="C">C</button>
+            <button class="keypad-btn" data-key="0">0</button>
+            <button class="keypad-btn btn-enter" data-key="E">විවෘත</button>
+          </div>
+          <button id="btn-close-puzzle" class="btn btn-outline" style="margin-top:10px;">ඉවත් වන්න (Close)</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- MOBILE MULTI-TOUCH CONTROLS -->
+    <div id="mobile-controls" class="mobile-touch-layer hidden">
+      <!-- Virtual Joystick Zone (Left half) -->
+      <div id="joystick-zone" class="touch-zone-left">
+        <div id="joystick-base" class="joystick-base hidden">
+          <div id="joystick-thumb" class="joystick-thumb"></div>
+        </div>
+      </div>
+
+      <!-- Drag to Look Zone (Right half) -->
+      <div id="look-zone" class="touch-zone-right"></div>
+
+      <!-- Action Buttons (Right side overlay) -->
+      <div class="mobile-action-buttons">
+        <button id="touch-btn-interact" class="touch-btn touch-btn-primary">
+          <span class="touch-btn-label">අන්තර්ක්‍රියා</span>
+          <span class="touch-btn-sub">E / USE</span>
+        </button>
+        <button id="touch-btn-flashlight" class="touch-btn">
+          <span class="touch-btn-label">විදුලිය</span>
+          <span class="touch-btn-sub">F / LIGHT</span>
+        </button>
+        <button id="touch-btn-sprint" class="touch-btn">
+          <span class="touch-btn-label">දුවන්න</span>
+          <span class="touch-btn-sub">RUN</span>
+        </button>
+        <button id="touch-btn-crouch" class="touch-btn">
+          <span class="touch-btn-label">නැමෙන්න</span>
+          <span class="touch-btn-sub">CROUCH</span>
+        </button>
+      </div>
+
+      <!-- Top Right Pause / Settings button -->
+      <button id="touch-btn-pause" class="touch-btn-gear">⚙️</button>
+    </div>
+
+    <!-- SETTINGS & CONTROLS MODAL -->
+    <div id="modal-settings" class="modal-overlay hidden">
+      <div class="modal-card wide">
+        <h3 class="modal-title">සැකසුම් සහ පාලක (Settings & Controls)</h3>
+        
+        <div class="settings-tabs">
+          <div class="setting-group">
+            <label>ග්‍රැෆික්ස් මට්ටම (Graphics Preset):</label>
+            <div class="segmented-control" id="graphics-preset-selector">
+              <button class="seg-btn" data-quality="low">අඩු (Low)</button>
+              <button class="seg-btn active" data-quality="medium">මධ්‍යම (Med)</button>
+              <button class="seg-btn" data-quality="high">ඉහළ (High)</button>
+            </div>
+            <p class="setting-hint">Low: දුරකථන සඳහා වේගවත් (No shadows). High: පූර්ණ සෙවනැලි සහ බ්ලූම් (Full horror lighting).</p>
+          </div>
+
+          <div class="setting-group">
+            <label>ස්පර්ශක පාලක (Mobile Touch Controls):</label>
+            <div class="segmented-control" id="touch-mode-selector">
+              <button class="seg-btn" data-touch="auto">ස්වයංක්‍රීය (Auto)</button>
+              <button class="seg-btn" data-touch="on">සක්‍රීය (Always ON)</button>
+              <button class="seg-btn" data-touch="off">අක්‍රීය (OFF / PC)</button>
+            </div>
+          </div>
+
+          <div class="setting-group">
+            <label for="mouse-sens-slider">දර්ශක සංවේදීතාව (Look Sensitivity): <span id="sens-value">1.0</span></label>
+            <input type="range" id="mouse-sens-slider" min="0.2" max="3.0" step="0.1" value="1.0" />
+          </div>
+
+          <div class="setting-group">
+            <label for="master-volume-slider">ප්‍රධාන ශබ්දය (Master Audio): <span id="vol-value">80%</span></label>
+            <input type="range" id="master-volume-slider" min="0" max="100" step="5" value="80" />
+          </div>
+
+          <div class="controls-guide">
+            <h4>පාලනය කරන ආකාරය (Controls Guide):</h4>
+            <div class="guide-grid">
+              <div class="guide-row"><span>W / A / S / D</span><strong>ඉදිරියට / පසුපසට / දෙපසට චලනය</strong></div>
+              <div class="guide-row"><span>SHIFT</span><strong>වේගයෙන් දිවීම (Sprint)</strong></div>
+              <div class="guide-row"><span>C / CTRL</span><strong>නැමී ගමන් කිරීම (Crouch - Quiet)</strong></div>
+              <div class="guide-row"><span>F</span><strong>විදුලි පන්දම දල්වන්න / නිවන්න (Flashlight)</strong></div>
+              <div class="guide-row"><span>E</span><strong>දොරවල්, යතුරු, සේප්පු සමඟ ක්‍රියා කිරීම (Interact)</strong></div>
+              <div class="guide-row"><span>Mouse</span><strong>වටපිට බැලීම (Look around)</strong></div>
+            </div>
+          </div>
+        </div>
+
+        <div class="modal-buttons">
+          <button id="btn-close-settings" class="btn btn-primary">තහවුරු කර වසන්න (Save & Close)</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- GAME OVER / VICTORY SCREEN -->
+    <div id="screen-gameover" class="screen hidden">
+      <div class="endgame-card defeat">
+        <h1 class="endgame-title danger">ඔබ මිය ගියා...</h1>
+        <h2 class="endgame-sub">YOU WERE CONSUMED BY THE ENTITY</h2>
+        <p class="endgame-quote">"අඳුරේ සැඟවුණු සෙවනැල්ල ඔබව සොයාගත්තේය..."</p>
+        <div class="endgame-stats" id="defeat-stats">
+          <!-- Stats filled dynamically -->
+        </div>
+        <div class="modal-buttons">
+          <button id="btn-restart-defeat" class="btn btn-danger">නැවත උත්සාහ කරන්න (Try Again)</button>
+          <button id="btn-menu-defeat" class="btn btn-outline">ප්‍රධාන මෙනුව (Main Menu)</button>
+        </div>
+      </div>
+    </div>
+
+    <div id="screen-victory" class="screen hidden">
+      <div class="endgame-card victory">
+        <h1 class="endgame-title success">ඔබ දිවි ගලවා ගත්තා!</h1>
+        <h2 class="endgame-sub">SURVIVED CHAPTER 1: THE CLINIC</h2>
+        <p class="endgame-quote">"හදිසි SOS සංඥාව ගුවන්විදුලි කුළුණ ඔස්සේ විකාශනය විය. ගලවාගැනීමේ හෙලිකොප්ටරය අඳුරු වනාන්තරය මැදින් පැමිණියේය."</p>
+        <div class="endgame-stats" id="victory-stats">
+          <!-- Stats filled dynamically -->
+        </div>
+        <div class="modal-buttons">
+          <button id="btn-menu-victory" class="btn btn-primary">ප්‍රධාන මෙනුව (Main Menu)</button>
+        </div>
+      </div>
+    </div>
+
+  </div>
+
+  <script type="module" src="/src/main.ts"></script>
+</body>
+</html>

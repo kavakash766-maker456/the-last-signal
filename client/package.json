@@ -1,0 +1,22 @@
+{
+  "name": "@the-last-signal/client",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc && vite build",
+    "preview": "vite preview",
+    "test": "node --experimental-strip-types --test src/client.test.ts"
+  },
+  "dependencies": {
+    "@the-last-signal/shared": "*",
+    "colyseus.js": "^0.15.26",
+    "three": "^0.160.0"
+  },
+  "devDependencies": {
+    "@types/three": "^0.160.0",
+    "typescript": "^5.5.4",
+    "vite": "^5.4.0"
+  }
+}
