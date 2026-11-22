@@ -49,7 +49,7 @@ describe("Authoritative Puzzle Locks & Objective Progression", () => {
     assert.equal(room.state.symbolPuzzleSolved, true, "Code 739 must successfully solve puzzle");
     assert.equal(room.state.hasAudioRecorder, true, "Solving safe must award Audio Recorder");
     assert.equal(puzzleSuccess, true);
-    assert.equal(room.state.objectives[2]?.completed, true, "Objective 3 must be marked complete");
+    assert.equal(room.state.objectives.at(2)?.completed, true, "Objective 3 must be marked complete");
   });
 
   test("gate key pickup distance and gate opening validation", () => {
@@ -99,7 +99,7 @@ describe("Authoritative Puzzle Locks & Objective Progression", () => {
       action: "OPEN_GATE"
     });
     assert.equal(room.state.gateOpened, true, "Gate must open when player has key and is at gate");
-    assert.equal(room.state.objectives[0]?.completed, true, "Objective 1 must be completed");
+    assert.equal(room.state.objectives.at(0)?.completed, true, "Objective 1 must be completed");
   });
 
   test("fuse restoration and generator activation", () => {
@@ -141,7 +141,7 @@ describe("Authoritative Puzzle Locks & Objective Progression", () => {
     });
     assert.equal(room.state.powerRestored, true, "Generator must start successfully");
     assert.equal(room.state.roofDoorUnlocked, true, "Roof access door must unlock");
-    assert.equal(room.state.objectives[1]?.completed, true, "Objective 2 must be completed");
+    assert.equal(room.state.objectives.at(1)?.completed, true, "Objective 2 must be completed");
   });
 
   test("radio SOS broadcast triggers CLIMAX and extraction completes chapter", () => {
@@ -170,7 +170,7 @@ describe("Authoritative Puzzle Locks & Objective Progression", () => {
 
     assert.equal(room.state.radioTransmitted, true, "SOS transmission must succeed");
     assert.equal(room.state.phase, "CLIMAX", "Game phase must shift to CLIMAX");
-    assert.equal(room.state.objectives[3]?.completed, true);
+    assert.equal(room.state.objectives.at(3)?.completed, true);
 
     // Escape extraction
     player.x = GameRoom.LOC_EXTRACTION.x;
@@ -183,6 +183,6 @@ describe("Authoritative Puzzle Locks & Objective Progression", () => {
 
     assert.equal(room.state.survivorsEscaped, 1);
     assert.equal(room.state.phase, "COMPLETED", "Game phase must be COMPLETED upon escape");
-    assert.equal(room.state.objectives[4]?.completed, true);
+    assert.equal(room.state.objectives.at(4)?.completed, true);
   });
 });

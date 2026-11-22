@@ -488,14 +488,15 @@ export class GameRoom extends Room<GameState> {
   }
 
   private completeObjective(index: number) {
-    if (this.state.objectives[index]) {
-      this.state.objectives[index].completed = true;
+    const objective = this.state.objectives.at(index);
+    if (objective) {
+      objective.completed = true;
       if (this.state.currentObjectiveIndex <= index) {
         this.state.currentObjectiveIndex = index + 1;
       }
       this.broadcast("OBJECTIVE_UPDATED", {
         index,
-        objective: this.state.objectives[index]
+        objective
       });
     }
   }
