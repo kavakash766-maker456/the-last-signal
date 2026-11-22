@@ -42,10 +42,10 @@ export class ClinicScene {
     const glassMat = new THREE.MeshStandardMaterial({ color: 0x64748b, roughness: 0.2, transparent: true, opacity: 0.35 });
 
     // 1. OUTSIDE GROUND & COURTYARD (Wet ground with puddles)
-    const groundGeo = new THREE.PlaneGeometry(80, 80);
+    const groundGeo = new THREE.PlaneGeometry(120, 120);
     const groundMat = new THREE.MeshStandardMaterial({
-      color: 0x0f1512,
-      roughness: 0.95,
+      color: 0x2e3d30, // visible wet earth & grass
+      roughness: 0.75,
       metalness: 0.1,
     });
     const ground = new THREE.Mesh(groundGeo, groundMat);
@@ -53,10 +53,11 @@ export class ClinicScene {
     ground.receiveShadow = true;
     this.root.add(ground);
 
-    // Exterior Perimeter Fence
+    // Exterior Perimeter Fence (encloses all 4 sides)
     this.createFence(-35, 0, 70, false);
     this.createFence(35, 0, 70, false);
     this.createFence(0, -35, 70, true);
+    this.createFence(0, 35, 70, true);
 
     // Exterior Jungle Trees (Creepy silhouettes)
     for (let i = 0; i < 35; i++) {
@@ -124,7 +125,7 @@ export class ClinicScene {
     this.walls.push(new THREE.Box3().setFromObject(this.gateDoor));
 
     // Porch Lantern Light over Gate (Eerie amber glow illuminating courtyard)
-    const porchLight = new THREE.PointLight(0xffb74d, 2.5, 18, 1.6);
+    const porchLight = new THREE.PointLight(0xffb74d, 4.5, 25, 1.4);
     porchLight.position.set(0, 3.4, 10.5);
     porchLight.castShadow = true;
     this.root.add(porchLight);

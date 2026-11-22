@@ -9,8 +9,8 @@ export class PlayerController {
   public scene: ClinicScene;
   public sounds: SoundSystem;
 
-  public position = new THREE.Vector3(0, 1.7, 18); // Start in courtyard outside clinic gate
-  public rotationY = Math.PI; // Face north toward clinic
+  public position = new THREE.Vector3(0, 1.7, 14); // 4m in front of clinic gate facing entrance
+  public rotationY = 0; // Face North (negative Z) directly toward clinic gate & lights
   public pitch = 0;
 
   // Speeds
@@ -83,15 +83,16 @@ export class PlayerController {
 
     // 4. Movement vector calculation
     const moveDir = new THREE.Vector3();
-    const forward = -this.input.state.forward;
-    const strafe = this.input.state.strafe;
+    const inputForward = this.input.state.forward;
+    const inputStrafe = this.input.state.strafe;
 
     if (isMoving) {
-      const cosY = Math.cos(this.rotationY);
-      const sinY = Math.sin(this.rotationY);
+      // Forward direction in Three.js (when rotationY = 0) is (0, 0, -1)
+      const forwardVec = new THREE.Vector3(-Math.sin(this.rotationY), 0, -Math.cos(this.rotationY));
+      const rightVec = new THREE.Vector3(Math.cos(this.rotationY), 0, -Math.sin(this.rotationY));
 
-      moveDir.x = strafe * cosY - forward * sinY;
-      moveDir.z = -strafe * sinY - forward * cosY;
+      moveDir.addScaledVector(forwardVec, inputForward);
+      moveDir.addScaledVector(rightVec, inputStrafe);
       moveDir.normalize();
 
       this.velocity.x = moveDir.x * currentSpeed;

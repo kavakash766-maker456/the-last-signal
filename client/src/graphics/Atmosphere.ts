@@ -46,18 +46,18 @@ export class Atmosphere {
     this.scene = scene;
     this.camera = camera;
 
-    // Atmospheric dark blue distance fog (tuned so surroundings and clinic are visible)
-    this.fog = new THREE.FogExp2(0x060e18, 0.028);
+    // Atmospheric dark blue distance fog
+    this.fog = new THREE.FogExp2(0x0a1626, 0.018);
     this.scene.fog = this.fog;
-    this.scene.background = new THREE.Color(0x060e18);
+    this.scene.background = new THREE.Color(0x0a1626);
 
-    // Ambient moonlight / ominous baseline
-    const ambient = new THREE.AmbientLight(0x182c40, 1.2);
+    // Ambient moonlight - clear base visibility so nothing is ever pitch black
+    const ambient = new THREE.AmbientLight(0x354d68, 2.5);
     this.scene.add(ambient);
 
     // Directional moonlight breaking through storm clouds
-    const moon = new THREE.DirectionalLight(0x4a7298, 1.0);
-    moon.position.set(12, 28, 18);
+    const moon = new THREE.DirectionalLight(0x7ea5cc, 2.2);
+    moon.position.set(10, 30, 20);
     this.scene.add(moon);
 
     // Lightning light
@@ -65,20 +65,27 @@ export class Atmosphere {
     this.lightningLight.position.set(10, 30, 10);
     this.scene.add(this.lightningLight);
 
-    // --- VOLUMETRIC FLASHLIGHT ---
-    this.flashlight = new THREE.SpotLight(0xfffaea, 5.5, 30, Math.PI / 6, 0.4, 1.2);
-    this.flashlight.position.set(0.2, -0.15, 0.1);
+    // --- PLAYER FLASHLIGHT (SpotLight + Camera Ambient Glow) ---
+    // 1. Omnidirectional camera glow (guarantees player always sees immediate surroundings)
+    const playerGlow = new THREE.PointLight(0xfffaea, 3.0, 18, 1.2);
+    playerGlow.position.set(0, 0, 0.1);
+    this.camera.add(playerGlow);
+
+    // 2. Focused long-range flashlight beam
+    this.flashlight = new THREE.SpotLight(0xffffff, 8.0, 40, Math.PI / 4, 0.5, 1.0);
+    this.flashlight.position.set(0, 0, 0);
     this.flashlight.castShadow = true;
     this.flashlight.shadow.mapSize.width = 1024;
     this.flashlight.shadow.mapSize.height = 1024;
     this.flashlight.shadow.camera.near = 0.2;
-    this.flashlight.shadow.camera.far = 25;
+    this.flashlight.shadow.camera.far = 40;
 
-    // Target placed 10 units in front of camera
+    // Target placed in front of camera
     const lightTarget = new THREE.Object3D();
-    lightTarget.position.set(0.2, -0.15, -10);
+    lightTarget.position.set(0, 0, -15);
     this.camera.add(lightTarget);
     this.flashlight.target = lightTarget;
+    this.scene.add(lightTarget);
     this.camera.add(this.flashlight);
 
     // Soft volumetric light cone mesh attached to camera
