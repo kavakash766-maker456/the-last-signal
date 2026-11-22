@@ -40,8 +40,8 @@ class GameApp {
 
   constructor() {
     this.initThree();
-    this.initSystems();
     this.initNetwork();
+    this.initSystems();
     this.setupResize();
     this.animate();
 
@@ -314,63 +314,71 @@ class GameApp {
     requestAnimationFrame(this.animate);
     const delta = Math.min(this.clock.getDelta(), 0.1);
 
-    // 1. Process keyboard movement
-    this.input.updateKeyboardInput();
+    try {
+      // 1. Process keyboard movement
+      this.input.updateKeyboardInput();
 
-    // 2. Update player physics and camera
-    this.player.update(delta);
+      // 2. Update player physics and camera
+      this.player.update(delta);
 
-    // 3. Update Audio Listener
-    const camDir = this.camera.getWorldDirection(new THREE.Vector3());
-    this.sounds.updateListenerPosition(
-      this.camera.position.x,
-      this.camera.position.y,
-      this.camera.position.z,
-      camDir.x,
-      camDir.y,
-      camDir.z
-    );
+      // 3. Update Audio Listener
+      const camDir = this.camera.getWorldDirection(new THREE.Vector3());
+      this.sounds.updateListenerPosition(
+        this.camera.position.x,
+        this.camera.position.y,
+        this.camera.position.z,
+        camDir.x,
+        camDir.y,
+        camDir.z
+      );
 
-    // 4. Update Clinic Scene & Atmosphere
-    this.clinicScene.update(delta, this.player.position);
+      // 4. Update Clinic Scene & Atmosphere
+      this.clinicScene.update(delta, this.player.position);
 
-    // 5. Update Creature
-    this.updateMonsterSoloAI(delta);
+      // 5. Update Creature
+      this.updateMonsterSoloAI(delta);
 
-    // 6. Update Remote Players
-    for (const model of this.remotePlayers.values()) {
-      model.update(delta);
+      // 6. Update Remote Players
+      for (const model of this.remotePlayers.values()) {
+        model.update(delta);
+      }
+
+      // 7. Update Game Story Director
+      if (this.director) {
+        this.director.update(delta);
+      }
+
+      // 8. Update HUD vitals
+      this.ui.updateHUD(
+        this.clinicScene.atmosphere.batteryLevel,
+        this.player.stamina
+      );
+
+      // Hover tooltip
+      const hovered = this.player.hoveredInteractable;
+      this.ui.setInteractionPrompt(
+        hovered !== null,
+        hovered ? hovered.promptSi : '',
+        this.input.isMobile
+      );
+
+      // 9. Send local network input packet at tick interval
+      if (this.network) {
+        this.network.sendInput({
+          x: this.player.position.x,
+          z: this.player.position.z,
+          rotationY: this.player.rotationY,
+          pitch: this.player.pitch,
+          isSprinting: this.input.state.isSprinting,
+          isCrouching: this.input.state.isCrouching,
+          flashlightOn: this.clinicScene.atmosphere.flashlightOn,
+        });
+      }
+    } catch (e) {
+      console.error('Frame update error:', e);
     }
 
-    // 7. Update Game Story Director
-    this.director.update(delta);
-
-    // 8. Update HUD vitals
-    this.ui.updateHUD(
-      this.clinicScene.atmosphere.batteryLevel,
-      this.player.stamina
-    );
-
-    // Hover tooltip
-    const hovered = this.player.hoveredInteractable;
-    this.ui.setInteractionPrompt(
-      hovered !== null,
-      hovered ? hovered.promptSi : '',
-      this.input.isMobile
-    );
-
-    // 9. Send local network input packet at tick interval
-    this.network.sendInput({
-      x: this.player.position.x,
-      z: this.player.position.z,
-      rotationY: this.player.rotationY,
-      pitch: this.player.pitch,
-      isSprinting: this.input.state.isSprinting,
-      isCrouching: this.input.state.isCrouching,
-      flashlightOn: this.clinicScene.atmosphere.flashlightOn,
-    });
-
-    // 10. Render frame
+    // 10. Render frame guaranteed
     this.renderer.render(this.scene, this.camera);
   };
 
@@ -383,7 +391,9 @@ class GameApp {
   }
 }
 
-// Start Game App on DOM ready
-window.addEventListener('DOMContentLoaded', () => {
+// Start Game App safely
+if (document.readyState === 'loading') {
+  window.addEventListener('DOMContentLoaded', () => new GameApp());
+} else {
   new GameApp();
-});
+}

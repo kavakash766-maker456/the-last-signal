@@ -135,12 +135,14 @@ export class GameDirector {
   }
 
   public update(delta: number) {
-    if (this.isGameOver) return;
+    if (this.isGameOver || !this.network?.state) return;
 
     // Objective text updates
-    const currentObj = this.network.state.objectives[this.network.state.currentObjectiveIndex];
-    if (currentObj) {
-      this.ui.updateObjective(currentObj.titleSi, currentObj.descriptionSi);
+    if (this.network.state.objectives) {
+      const currentObj = this.network.state.objectives[this.network.state.currentObjectiveIndex];
+      if (currentObj) {
+        this.ui.updateObjective(currentObj.titleSi, currentObj.descriptionSi);
+      }
     }
 
     // Climax Rooftop Countdown
@@ -154,32 +156,38 @@ export class GameDirector {
         this.ui.showClimaxTimer(false, 0);
         this.ui.showScreen('victory');
         const statsEl = document.getElementById('victory-stats')!;
-        statsEl.innerHTML = `
-          <div>දිවි ගැලවීම: සාර්ථකයි</div>
-          <div>සාමාජිකයින්: 1 - 4</div>
-          <div>පරිච්ඡේදය: 1 (අඳුරු සායනය) සම්පූර්ණයි</div>
-        `;
+        if (statsEl) {
+          statsEl.innerHTML = `
+            <div>දිවි ගැලවීම: සාර්ථකයි</div>
+            <div>සාමාජිකයින්: 1 - 4</div>
+            <div>පරිච්ඡේදය: 1 (අඳුරු සායනය) සම්පූර්ණයි</div>
+          `;
+        }
       }
     }
 
     // Creature Proximity and Attack check
-    const distToCreature = this.player.position.distanceTo(this.creature.mesh.position);
-    this.ui.updateProximityTension(distToCreature, this.network.state.enemy.alertLevel);
-    this.sounds.updateHeartbeatTension(Math.max(0, (25 - distToCreature) / 25), this.network.state.enemy.state === 'CHASE');
+    if (this.network.state.enemy) {
+      const distToCreature = this.player.position.distanceTo(this.creature.mesh.position);
+      this.ui.updateProximityTension(distToCreature, this.network.state.enemy.alertLevel);
+      this.sounds.updateHeartbeatTension(Math.max(0, (25 - distToCreature) / 25), this.network.state.enemy.state === 'CHASE');
 
-    if (distToCreature < 1.6 && !this.isGameOver) {
-      // Monster caught player!
-      this.isGameOver = true;
-      this.creature.setState('ATTACK');
-      this.sounds.playMonsterChaseScream(this.creature.mesh.position.x, this.creature.mesh.position.y, this.creature.mesh.position.z);
-      setTimeout(() => {
-        this.ui.showScreen('defeat');
-        const statsEl = document.getElementById('defeat-stats')!;
-        statsEl.innerHTML = `
-          <div>ජීවියාගේ දුර: 0.0 m</div>
-          <div>මෙහෙයුම: ${currentObj ? currentObj.titleSi : 'අසාර්ථකයි'}</div>
-        `;
-      }, 1200);
+      if (distToCreature < 1.6 && !this.isGameOver) {
+        // Monster caught player!
+        this.isGameOver = true;
+        this.creature.setState('ATTACK');
+        this.sounds.playMonsterChaseScream(this.creature.mesh.position.x, this.creature.mesh.position.y, this.creature.mesh.position.z);
+        setTimeout(() => {
+          this.ui.showScreen('defeat');
+          const statsEl = document.getElementById('defeat-stats')!;
+          if (statsEl) {
+            statsEl.innerHTML = `
+              <div>ජීවියාගේ දුර: 0.0 m</div>
+              <div>මෙහෙයුම: අසාර්ථකයි</div>
+            `;
+          }
+        }, 1200);
+      }
     }
   }
 }
