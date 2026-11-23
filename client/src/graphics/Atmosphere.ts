@@ -80,12 +80,11 @@ export class Atmosphere {
     this.flashlight.shadow.camera.near = 0.2;
     this.flashlight.shadow.camera.far = 40;
 
-    // Target placed in front of camera
+    // Target placed in front of camera (must remain child of camera so flashlight points where player looks)
     const lightTarget = new THREE.Object3D();
     lightTarget.position.set(0, 0, -15);
     this.camera.add(lightTarget);
     this.flashlight.target = lightTarget;
-    this.scene.add(lightTarget);
     this.camera.add(this.flashlight);
 
     // Soft volumetric light cone mesh attached to camera

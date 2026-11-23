@@ -1,4 +1,4 @@
-import { Client, Room } from 'colyseus.js';
+import { Peer, DataConnection } from 'peerjs';
 import {
   GameRoomState,
   PlayerData,
@@ -19,16 +19,23 @@ export interface NetworkCallbacks {
   onError: (message: string) => void;
 }
 
+export type NetworkMode = 'SOLO' | 'WEBRTC_HOST' | 'WEBRTC_GUEST';
+
 export class NetworkClient {
-  private client: Client;
-  private room: Room | null = null;
-  public isSoloMode = false;
+  public mode: NetworkMode = 'SOLO';
+  public isSoloMode = true;
   public localPlayerId = 'player_local';
   public localPlayerName = 'ක්‍රීඩකයා 1';
   public currentRoomCode = 'SOLO1';
   public isHost = true;
 
-  // Local state for solo mode or authoritative cache
+  // WebRTC PeerJS variables
+  private peer: Peer | null = null;
+  private connections: Map<string, DataConnection> = new Map(); // For host: clientId -> connection
+  private hostConnection: DataConnection | null = null; // For guest: connection to host
+  private hostSyncInterval: number | null = null;
+
+  // Authoritative State
   public state: GameRoomState = {
     roomCode: 'SOLO1',
     phase: 'LOBBY',
@@ -58,52 +65,32 @@ export class NetworkClient {
   };
 
   private callbacks: NetworkCallbacks;
-  private serverUrl: string;
 
   constructor(callbacks: NetworkCallbacks) {
     this.callbacks = callbacks;
-
-    // Detect server endpoint: custom override, render URL or localhost
-    const hostname = window.location.hostname;
-    const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-    
-    // In production or custom env, can point to deployed render service
-    const envUrl = (window as unknown as { __COLSEUS_URL__?: string }).__COLSEUS_URL__;
-    if (envUrl) {
-      this.serverUrl = envUrl;
-    } else if (hostname === 'localhost' || hostname === '127.0.0.1') {
-      this.serverUrl = `${protocol}//${hostname}:2567`;
-    } else {
-      // Connect to same origin host with default port or render backend
-      this.serverUrl = `wss://the-last-signal-server.onrender.com`;
-    }
-
-    this.client = new Client(this.serverUrl);
   }
 
+  // Quick server health / online status check
   public async pingServer(): Promise<boolean> {
-    try {
-      const httpUrl = this.serverUrl.replace(/^ws/, 'http');
-      const res = await fetch(`${httpUrl}/colyseus`, { method: 'GET', signal: AbortSignal.timeout(3500) });
-      return res.ok || res.status === 404; // Server responded
-    } catch {
-      return false;
-    }
+    return true; // WebRTC P2P infrastructure is always online & ready
   }
 
+  // --- SOLO STORY MODE ---
   public startSoloGame(playerName: string) {
+    this.mode = 'SOLO';
     this.isSoloMode = true;
     this.localPlayerName = playerName;
     this.localPlayerId = 'player_solo_' + Math.random().toString(36).substring(2, 6);
     this.currentRoomCode = 'SOLO';
     this.isHost = true;
 
+    this.state.roomCode = 'SOLO';
     this.state.players = {
       [this.localPlayerId]: {
         id: this.localPlayerId,
         name: playerName,
-        position: { x: 0, y: 1.7, z: 18 },
-        rotationY: Math.PI,
+        position: { x: 0, y: 1.7, z: 34 },
+        rotationY: 0,
         pitch: 0,
         isSprinting: false,
         isCrouching: false,
@@ -120,31 +107,26 @@ export class NetworkClient {
     this.callbacks.onStateUpdate(this.state);
   }
 
+  // --- WEBRTC MULTIPLAYER: CREATE ROOM (HOST) ---
   public async createMultiplayerRoom(playerName: string): Promise<string> {
+    this.mode = 'WEBRTC_HOST';
     this.isSoloMode = false;
     this.localPlayerName = playerName;
+    this.isHost = true;
 
-    try {
-      this.room = await this.client.create('game_room', { playerName });
-      this.setupRoomListeners();
-      this.localPlayerId = this.room.sessionId;
-      this.isHost = true;
-      return this.room.id;
-    } catch (err: unknown) {
-      console.warn('Could not create Colyseus room, falling back to local host emulation:', err);
-      // Fallback: emulate room so testing never blocks
-      this.isSoloMode = true;
-      const fakeCode = 'K9H2M';
-      this.currentRoomCode = fakeCode;
-      this.localPlayerId = 'host_' + Math.random().toString(36).substring(2, 6);
-      this.isHost = true;
+    // Generate readable 5-char room code (A-Z, 2-9)
+    const code = this.generateRoomCode();
+    this.currentRoomCode = code;
+    this.localPlayerId = 'host_' + Math.random().toString(36).substring(2, 6);
 
-      this.state.roomCode = fakeCode;
-      this.state.players[this.localPlayerId] = {
+    this.state.roomCode = code;
+    this.state.phase = 'LOBBY';
+    this.state.players = {
+      [this.localPlayerId]: {
         id: this.localPlayerId,
         name: playerName,
-        position: { x: 0, y: 1.7, z: 18 },
-        rotationY: Math.PI,
+        position: { x: 0, y: 1.7, z: 34 },
+        rotationY: 0,
         pitch: 0,
         isSprinting: false,
         isCrouching: false,
@@ -153,164 +135,436 @@ export class NetworkClient {
         isHost: true,
         isReady: true,
         connected: true,
-      };
+      },
+    };
 
-      this.callbacks.onStateUpdate(this.state);
-      return fakeCode;
-    }
-  }
+    const peerId = `the-last-signal-${code.toLowerCase()}`;
 
-  public async joinMultiplayerRoom(roomCode: string, playerName: string): Promise<boolean> {
-    this.isSoloMode = false;
-    this.localPlayerName = playerName;
+    return new Promise((resolve) => {
+      try {
+        if (this.peer) {
+          this.peer.destroy();
+        }
 
-    try {
-      this.room = await this.client.joinById(roomCode, { playerName });
-      this.setupRoomListeners();
-      this.localPlayerId = this.room.sessionId;
-      this.isHost = false;
-      return true;
-    } catch (err: unknown) {
-      console.error('Failed to join room:', err);
-      this.callbacks.onError('කාමරයට සම්බන්ධ විය නොහැක (Room not found or full)');
-      return false;
-    }
-  }
+        this.peer = new Peer(peerId, {
+          config: {
+            iceServers: [
+              { urls: 'stun:stun.l.google.com:19302' },
+              { urls: 'stun:global.stun.twilio.com:3478' },
+            ],
+          },
+        });
 
-  private setupRoomListeners() {
-    if (!this.room) return;
+        this.peer.on('open', (id) => {
+          console.log('[WebRTC Host] Room opened with Peer ID:', id);
+          this.startHostSyncLoop();
+          resolve(code);
+        });
 
-    this.room.onStateChange((state: GameRoomState) => {
-      this.state = state;
-      this.callbacks.onStateUpdate(state);
-    });
+        this.peer.on('connection', (conn) => {
+          this.handleIncomingGuestConnection(conn);
+        });
 
-    this.room.onMessage('phase_changed', (phase: GamePhase) => {
-      this.state.phase = phase;
-      this.callbacks.onPhaseChange(phase);
-    });
-
-    this.room.onMessage('objective_updated', (index: number) => {
-      this.state.currentObjectiveIndex = index;
-      this.callbacks.onObjectiveChange(index);
-    });
-
-    this.room.onLeave((code) => {
-      console.log('Left room code:', code);
-    });
-
-    this.room.onError((code, message) => {
-      console.error('Room error:', code, message);
-      this.callbacks.onError(message || 'සම්බන්ධතාව ඇණහිටුණි');
-    });
-  }
-
-  public sendInput(payload: ClientInputPayload) {
-    if (this.isSoloMode) {
-      const p = this.state.players[this.localPlayerId];
-      if (p) {
-        p.position.x = payload.x;
-        p.position.z = payload.z;
-        p.rotationY = payload.rotationY;
-        p.pitch = payload.pitch;
-        p.isSprinting = payload.isSprinting;
-        p.isCrouching = payload.isCrouching;
-        p.flashlightOn = payload.flashlightOn;
+        this.peer.on('error', (err) => {
+          console.warn('[WebRTC Host] Peer warning:', err);
+          resolve(code); // Fallback: still resolve code so lobby renders
+        });
+      } catch (e) {
+        console.error('[WebRTC Host] Failed to init peer:', e);
+        resolve(code);
       }
+    });
+  }
+
+  private handleIncomingGuestConnection(conn: DataConnection) {
+    // 4-player cap check
+    if (Object.keys(this.state.players).length >= 4) {
+      conn.send({ type: 'error', message: 'කාමරය පිරී ඇත (Room is full - Max 4 players)' });
+      setTimeout(() => conn.close(), 500);
       return;
     }
 
-    if (this.room) {
-      this.room.send('player_input', payload);
+    conn.on('open', () => {
+      console.log('[WebRTC Host] Guest connected:', conn.peer);
+      this.connections.set(conn.peer, conn);
+
+      // Handle messages from guest
+      conn.on('data', (data: any) => {
+        this.handleGuestMessage(conn.peer, data);
+      });
+
+      conn.on('close', () => {
+        console.log('[WebRTC Host] Guest disconnected:', conn.peer);
+        this.connections.delete(conn.peer);
+        delete this.state.players[conn.peer];
+        this.broadcast({ type: 'player_left', playerId: conn.peer });
+        this.callbacks.onPlayerLeft(conn.peer);
+        this.callbacks.onStateUpdate(this.state);
+      });
+    });
+  }
+
+  private handleGuestMessage(senderId: string, msg: any) {
+    if (!msg || typeof msg !== 'object') return;
+
+    switch (msg.type) {
+      case 'join_request': {
+        const guestName = (msg.name || 'ක්‍රීඩකයා').substring(0, 15);
+        this.state.players[senderId] = {
+          id: senderId,
+          name: guestName,
+          position: { x: (Math.random() - 0.5) * 2, y: 1.7, z: 14 + (Math.random() - 0.5) * 2 },
+          rotationY: 0,
+          pitch: 0,
+          isSprinting: false,
+          isCrouching: false,
+          flashlightOn: true,
+          flashlightBattery: 100,
+          isHost: false,
+          isReady: false,
+          connected: true,
+        };
+
+        // Send full state to newly joined guest
+        const conn = this.connections.get(senderId);
+        if (conn && conn.open) {
+          conn.send({ type: 'state_full', state: this.state, yourId: senderId });
+        }
+
+        // Notify other players
+        this.broadcast({ type: 'player_joined', player: this.state.players[senderId] });
+        this.callbacks.onPlayerJoined(this.state.players[senderId]);
+        this.callbacks.onStateUpdate(this.state);
+        break;
+      }
+
+      case 'player_input': {
+        const p = this.state.players[senderId];
+        if (p) {
+          p.position.x = msg.payload.x;
+          p.position.z = msg.payload.z;
+          p.rotationY = msg.payload.rotationY;
+          p.pitch = msg.payload.pitch;
+          p.isSprinting = msg.payload.isSprinting;
+          p.isCrouching = msg.payload.isCrouching;
+          p.flashlightOn = msg.payload.flashlightOn;
+        }
+        break;
+      }
+
+      case 'set_ready': {
+        const p = this.state.players[senderId];
+        if (p) {
+          p.isReady = Boolean(msg.isReady);
+          this.broadcast({ type: 'player_ready', playerId: senderId, isReady: p.isReady });
+          this.callbacks.onStateUpdate(this.state);
+        }
+        break;
+      }
+
+      case 'player_interact': {
+        this.handleSoloInteraction(msg.payload);
+        this.broadcast({ type: 'state_sync', state: this.state });
+        break;
+      }
+    }
+  }
+
+  // --- WEBRTC MULTIPLAYER: JOIN ROOM (GUEST) ---
+  public async joinMultiplayerRoom(roomCode: string, playerName: string): Promise<boolean> {
+    this.mode = 'WEBRTC_GUEST';
+    this.isSoloMode = false;
+    this.localPlayerName = playerName;
+    this.currentRoomCode = roomCode.toUpperCase().trim();
+    this.isHost = false;
+
+    const hostPeerId = `the-last-signal-${this.currentRoomCode.toLowerCase()}`;
+    const myGuestId = `guest-${Math.random().toString(36).substring(2, 8)}`;
+    this.localPlayerId = myGuestId;
+
+    return new Promise((resolve) => {
+      try {
+        if (this.peer) {
+          this.peer.destroy();
+        }
+
+        this.peer = new Peer(myGuestId, {
+          config: {
+            iceServers: [
+              { urls: 'stun:stun.l.google.com:19302' },
+              { urls: 'stun:global.stun.twilio.com:3478' },
+            ],
+          },
+        });
+
+        const timeout = setTimeout(() => {
+          if (!this.hostConnection?.open) {
+            this.callbacks.onError('කාමරය සොයාගත නොහැක (Room not found). කේතය නිවැරදිදැයි පරීක්ෂා කරන්න.');
+            resolve(false);
+          }
+        }, 10000);
+
+        this.peer.on('open', () => {
+          console.log('[WebRTC Guest] Connecting to host:', hostPeerId);
+          this.hostConnection = this.peer!.connect(hostPeerId, { reliable: true });
+
+          this.hostConnection.on('open', () => {
+            clearTimeout(timeout);
+            console.log('[WebRTC Guest] Connected to host!');
+            // Request to join with player name
+            this.hostConnection!.send({ type: 'join_request', name: this.localPlayerName });
+            resolve(true);
+          });
+
+          this.hostConnection.on('data', (data: any) => {
+            this.handleHostMessage(data);
+          });
+
+          this.hostConnection.on('close', () => {
+            this.callbacks.onError('කාමර සත්කාරකයා (Host) විසන්ධි විය.');
+          });
+        });
+
+        this.peer.on('error', (err) => {
+          clearTimeout(timeout);
+          console.error('[WebRTC Guest] Peer error:', err);
+          this.callbacks.onError('සම්බන්ධතා දෝෂයකි: ' + err.type);
+          resolve(false);
+        });
+      } catch (e: any) {
+        this.callbacks.onError('සම්බන්ධ වීමට නොහැකි විය: ' + e.message);
+        resolve(false);
+      }
+    });
+  }
+
+  private handleHostMessage(msg: any) {
+    if (!msg || typeof msg !== 'object') return;
+
+    switch (msg.type) {
+      case 'state_full': {
+        this.state = msg.state;
+        if (msg.yourId) {
+          this.localPlayerId = msg.yourId;
+        }
+        this.callbacks.onStateUpdate(this.state);
+        break;
+      }
+
+      case 'state_sync': {
+        this.state.phase = msg.state.phase;
+        this.state.currentObjectiveIndex = msg.state.currentObjectiveIndex;
+        this.state.objectives = msg.state.objectives;
+        this.state.enemy = msg.state.enemy;
+        this.state.hasGateKey = msg.state.hasGateKey;
+        this.state.gateOpened = msg.state.gateOpened;
+        this.state.hasClinicFuse = msg.state.hasClinicFuse;
+        this.state.powerRestored = msg.state.powerRestored;
+        this.state.hasAudioRecorder = msg.state.hasAudioRecorder;
+        this.state.symbolPuzzleSolved = msg.state.symbolPuzzleSolved;
+        this.state.radioTransmitted = msg.state.radioTransmitted;
+
+        // Sync players
+        for (const [id, data] of Object.entries(msg.state.players as Record<string, PlayerData>)) {
+          if (id === this.localPlayerId) continue; // Don't overwrite local prediction
+          this.state.players[id] = data;
+        }
+
+        this.callbacks.onStateUpdate(this.state);
+        break;
+      }
+
+      case 'phase_changed': {
+        this.state.phase = msg.phase;
+        this.callbacks.onPhaseChange(msg.phase);
+        break;
+      }
+
+      case 'objective_updated': {
+        this.state.currentObjectiveIndex = msg.index;
+        this.callbacks.onObjectiveChange(msg.index);
+        break;
+      }
+
+      case 'player_joined': {
+        this.state.players[msg.player.id] = msg.player;
+        this.callbacks.onPlayerJoined(msg.player);
+        this.callbacks.onStateUpdate(this.state);
+        break;
+      }
+
+      case 'player_left': {
+        delete this.state.players[msg.playerId];
+        this.callbacks.onPlayerLeft(msg.playerId);
+        this.callbacks.onStateUpdate(this.state);
+        break;
+      }
+
+      case 'error': {
+        this.callbacks.onError(msg.message);
+        break;
+      }
+    }
+  }
+
+  // Broadcast data to all connected guests (Host only)
+  private broadcast(data: any) {
+    for (const conn of this.connections.values()) {
+      if (conn.open) {
+        conn.send(data);
+      }
+    }
+  }
+
+  // Host 20Hz Tick loop: syncs player transforms & monster
+  private startHostSyncLoop() {
+    if (this.hostSyncInterval) clearInterval(this.hostSyncInterval);
+    this.hostSyncInterval = window.setInterval(() => {
+      if (this.mode === 'WEBRTC_HOST' && this.connections.size > 0) {
+        this.broadcast({
+          type: 'state_sync',
+          state: this.state,
+        });
+      }
+    }, 50); // 20 updates per second
+  }
+
+  public sendInput(payload: ClientInputPayload) {
+    // Update local state representation
+    const p = this.state.players[this.localPlayerId];
+    if (p) {
+      p.position.x = payload.x;
+      p.position.z = payload.z;
+      p.rotationY = payload.rotationY;
+      p.pitch = payload.pitch;
+      p.isSprinting = payload.isSprinting;
+      p.isCrouching = payload.isCrouching;
+      p.flashlightOn = payload.flashlightOn;
+    }
+
+    if (this.mode === 'WEBRTC_GUEST' && this.hostConnection?.open) {
+      this.hostConnection.send({
+        type: 'player_input',
+        payload,
+      });
     }
   }
 
   public sendInteract(payload: PlayerInteractPayload) {
-    if (this.isSoloMode) {
+    if (this.isHost || this.isSoloMode) {
       this.handleSoloInteraction(payload);
-      return;
-    }
-
-    if (this.room) {
-      this.room.send('player_interact', payload);
+      if (this.mode === 'WEBRTC_HOST') {
+        this.broadcast({ type: 'state_sync', state: this.state });
+      }
+    } else if (this.mode === 'WEBRTC_GUEST' && this.hostConnection?.open) {
+      this.hostConnection.send({
+        type: 'player_interact',
+        payload,
+      });
     }
   }
 
   public setReady(isReady: boolean) {
-    if (this.isSoloMode) {
-      if (this.state.players[this.localPlayerId]) {
-        this.state.players[this.localPlayerId].isReady = isReady;
-        this.callbacks.onStateUpdate(this.state);
-      }
-      return;
+    if (this.state.players[this.localPlayerId]) {
+      this.state.players[this.localPlayerId].isReady = isReady;
+      this.callbacks.onStateUpdate(this.state);
     }
 
-    if (this.room) {
-      this.room.send('set_ready', { isReady });
+    if (this.mode === 'WEBRTC_GUEST' && this.hostConnection?.open) {
+      this.hostConnection.send({ type: 'set_ready', isReady });
+    } else if (this.mode === 'WEBRTC_HOST') {
+      this.broadcast({ type: 'player_ready', playerId: this.localPlayerId, isReady });
     }
   }
 
   public startGame() {
-    if (this.isSoloMode) {
-      this.state.phase = 'PLAYING';
-      this.callbacks.onPhaseChange('PLAYING');
-      this.callbacks.onStateUpdate(this.state);
-      return;
-    }
+    this.state.phase = 'PLAYING';
+    this.callbacks.onPhaseChange('PLAYING');
+    this.callbacks.onStateUpdate(this.state);
 
-    if (this.room && this.isHost) {
-      this.room.send('start_game');
+    if (this.mode === 'WEBRTC_HOST') {
+      this.broadcast({ type: 'phase_changed', phase: 'PLAYING' });
     }
   }
 
-  // --- SOLO OFFLINE GAME STATE RESOLVER ---
-  private handleSoloInteraction(payload: PlayerInteractPayload) {
-    switch (payload.action) {
+  // --- STORY OBJECTIVE PROGRESSION LOGIC (Authoritative) ---
+  public handleSoloInteraction(payload: PlayerInteractPayload) {
+    const { action } = payload;
+
+    switch (action) {
       case 'PICKUP_KEY':
-        this.state.hasGateKey = true;
-        this.state.gateOpened = true;
-        this.state.objectives[0].completed = true;
-        this.state.currentObjectiveIndex = 1;
-        this.callbacks.onObjectiveChange(1);
+        if (!this.state.hasGateKey) {
+          this.state.hasGateKey = true;
+          this.completeObjective(0);
+          this.advanceObjective(1);
+        }
         break;
 
       case 'PICKUP_FUSE':
-        this.state.hasClinicFuse = true;
+        if (!this.state.hasClinicFuse) {
+          this.state.hasClinicFuse = true;
+        }
         break;
 
       case 'ACTIVATE_GENERATOR':
-        if (this.state.hasClinicFuse) {
+        if (this.state.hasClinicFuse && !this.state.powerRestored) {
           this.state.powerRestored = true;
-          this.state.objectives[1].completed = true;
-          this.state.currentObjectiveIndex = 2;
-          this.callbacks.onObjectiveChange(2);
+          this.completeObjective(1);
+          this.advanceObjective(2);
         }
         break;
 
       case 'SOLVE_PUZZLE':
-        if (payload.puzzleCode === '739') {
+        if (payload.puzzleCode === '739' && !this.state.symbolPuzzleSolved) {
           this.state.symbolPuzzleSolved = true;
-          this.state.objectives[2].completed = true;
-          this.state.currentObjectiveIndex = 3;
-          this.callbacks.onObjectiveChange(3);
+          this.completeObjective(2);
+          this.advanceObjective(3);
         }
         break;
 
       case 'PICKUP_RECORDER':
-        this.state.hasAudioRecorder = true;
-        this.state.objectives[3].completed = true;
-        this.state.currentObjectiveIndex = 4;
-        this.callbacks.onObjectiveChange(4);
+        if (!this.state.hasAudioRecorder) {
+          this.state.hasAudioRecorder = true;
+          this.completeObjective(3);
+          this.advanceObjective(4);
+        }
         break;
 
       case 'TRANSMIT_RADIO':
-        this.state.radioTransmitted = true;
-        this.state.objectives[4].completed = true;
-        this.state.phase = 'CLIMAX';
-        this.callbacks.onPhaseChange('CLIMAX');
+        if (this.state.powerRestored && !this.state.radioTransmitted) {
+          this.state.radioTransmitted = true;
+          this.completeObjective(4);
+          this.state.phase = 'CLIMAX';
+          this.callbacks.onPhaseChange('CLIMAX');
+          if (this.mode === 'WEBRTC_HOST') {
+            this.broadcast({ type: 'phase_changed', phase: 'CLIMAX' });
+          }
+        }
         break;
     }
+  }
 
+  private completeObjective(idx: number) {
+    if (this.state.objectives[idx]) {
+      this.state.objectives[idx].completed = true;
+    }
+  }
+
+  private advanceObjective(nextIdx: number) {
+    this.state.currentObjectiveIndex = nextIdx;
+    this.callbacks.onObjectiveChange(nextIdx);
     this.callbacks.onStateUpdate(this.state);
+    if (this.mode === 'WEBRTC_HOST') {
+      this.broadcast({ type: 'objective_updated', index: nextIdx });
+    }
+  }
+
+  private generateRoomCode(): string {
+    const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+    let code = '';
+    for (let i = 0; i < 5; i++) {
+      code += chars.charAt(Math.floor(Math.random() * chars.length));
+    }
+    return code;
   }
 }

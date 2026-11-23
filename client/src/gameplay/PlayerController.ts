@@ -9,8 +9,8 @@ export class PlayerController {
   public scene: ClinicScene;
   public sounds: SoundSystem;
 
-  public position = new THREE.Vector3(0, 1.7, 14); // 4m in front of clinic gate facing entrance
-  public rotationY = 0; // Face North (negative Z) directly toward clinic gate & lights
+  public position = new THREE.Vector3(0, 1.7, 34); // Starting on the wet rainy highway approach
+  public rotationY = 0; // Face North directly toward ambulance, checkpoint & clinic gates
   public pitch = 0;
 
   // Speeds

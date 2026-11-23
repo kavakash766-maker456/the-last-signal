@@ -13,6 +13,7 @@
   "dependencies": {
     "@the-last-signal/shared": "*",
     "colyseus.js": "^0.15.26",
+    "peerjs": "^1.5.5",
     "three": "^0.160.0"
   },
   "devDependencies": {

@@ -181,8 +181,8 @@ class GameApp {
         }
         this.syncRemotePlayers(state.players);
 
-        // Sync creature position from server if not solo
-        if (!this.network.isSoloMode) {
+        // Sync creature position from host if guest
+        if (!this.network.isHost && state.enemy) {
           this.creature.mesh.position.set(state.enemy.position.x, state.enemy.position.y, state.enemy.position.z);
           this.creature.mesh.rotation.y = state.enemy.rotationY;
           this.creature.setState(state.enemy.state);
@@ -254,7 +254,8 @@ class GameApp {
   }
 
   private updateMonsterSoloAI(delta: number) {
-    if (!this.network.isSoloMode || this.director.isGameOver) return;
+    // Only host or solo player runs authoritative monster AI logic
+    if (!this.network.isHost || this.director.isGameOver) return;
 
     const monsterPos = this.creature.mesh.position;
     const playerPos = this.player.position;
@@ -303,6 +304,12 @@ class GameApp {
       }
       this.creature.update(delta, false);
     }
+
+    // Sync enemy transform to network state for connected guests
+    this.network.state.enemy.position.x = monsterPos.x;
+    this.network.state.enemy.position.y = monsterPos.y;
+    this.network.state.enemy.position.z = monsterPos.z;
+    this.network.state.enemy.rotationY = this.creature.mesh.rotation.y;
 
     // Random sinister groan
     if (Math.random() < 0.003) {
